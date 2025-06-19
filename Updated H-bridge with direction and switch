@@ -1,0 +1,79 @@
+
+const int controlPin1 = 2; 
+const int controlPin2 = 3; 
+const int enablePin = 4; 
+const int directionSwitchPin = 9; 
+const int onOffSwitchPin = 5; 
+const int potPin = A0;
+
+int motorEnabled = 0;
+int motorDirection = 1;
+
+int lastOnOffState = LOW;
+int lastDirectionState = LOW;
+
+unsigned long lastDebounceTimeDir = 0;
+unsigned long lastDebounceTimeOnOff = 0;
+const unsigned long debounceDelay = 50;
+
+int motorSpeed = 0;
+
+void setup() {
+  pinMode(directionSwitchPin, INPUT);
+  pinMode(onOffSwitchPin, INPUT);
+  pinMode(controlPin1, OUTPUT);
+  pinMode(controlPin2, OUTPUT);
+  pinMode(enablePin, OUTPUT);
+  digitalWrite(enablePin, LOW);
+  Serial.begin(9600);
+}
+
+void loop() {
+  int readingOnOff = digitalRead(onOffSwitchPin);
+  int readingDir = digitalRead(directionSwitchPin);
+
+  unsigned long currentTime = millis();
+
+  // --- ON/OFF SWITCH DEBOUNCE ---
+  if (readingOnOff != lastOnOffState && (currentTime - lastDebounceTimeOnOff > debounceDelay)) {
+    lastDebounceTimeOnOff = currentTime;
+    if (readingOnOff == HIGH) {
+      motorEnabled = !motorEnabled;
+    }
+  }
+
+  // --- DIRECTION SWITCH DEBOUNCE ---
+  if (readingDir != lastDirectionState && (currentTime - lastDebounceTimeDir > debounceDelay)) {
+    lastDebounceTimeDir = currentTime;
+    if (readingDir == HIGH) {
+      motorDirection = !motorDirection;
+    }
+  }
+
+  lastOnOffState = readingOnOff;
+  lastDirectionState = readingDir;
+
+  motorSpeed = analogRead(potPin) / 4;
+
+  if (motorDirection == 1) {
+    digitalWrite(controlPin1, HIGH);
+    digitalWrite(controlPin2, LOW);
+  } else {
+    digitalWrite(controlPin1, LOW);
+    digitalWrite(controlPin2, HIGH);
+  }
+
+  if (motorEnabled) {
+    analogWrite(enablePin, motorSpeed);
+  } else {
+    analogWrite(enablePin, 0);
+  }
+
+  // Debug output
+  Serial.print("Enabled: ");
+  Serial.print(motorEnabled);
+  Serial.print(" | Direction: ");
+  Serial.print(motorDirection == 1 ? "Forward" : "Reverse");
+  Serial.print(" | Speed: ");
+  Serial.println(motorSpeed);
+}
