@@ -1,0 +1,222 @@
+const int controlPin1 = 2; 
+const int controlPin2 = 3; 
+const int enablePin = 4; 
+const int directionSwitchPin = 9; 
+const int onOffSwitchPin = 5; 
+const int tmpPin = A0; // TMP36 connected here
+
+int motorEnabled = 0;
+int motorDirection = 1;
+
+int lastOnOffState = LOW;
+int lastDirectionState = LOW;
+
+unsigned long lastDebounceTimeDir = 0;
+unsigned long lastDebounceTimeOnOff = 0;
+const unsigned long debounceDelay = 50;
+
+int motorSpeed = 0;
+
+void setup() {
+  pinMode(directionSwitchPin, INPUT);
+  pinMode(onOffSwitchPin, INPUT);
+  pinMode(controlPin1, OUTPUT);
+  pinMode(controlPin2, OUTPUT);
+  pinMode(enablePin, OUTPUT);
+  digitalWrite(enablePin, LOW);
+  Serial.begin(9600);
+}
+
+void loop() {
+  int readingOnOff = digitalRead(onOffSwitchPin);
+  int readingDir = digitalRead(directionSwitchPin);
+  unsigned long currentTime = millis();
+
+  // --- ON/OFF SWITCH DEBOUNCE ---
+  if (readingOnOff != lastOnOffState && (currentTime - lastDebounceTimeOnOff > debounceDelay)) {
+    lastDebounceTimeOnOff = currentTime;
+    if (readingOnOff == HIGH) {
+      motorEnabled = !motorEnabled;
+    }
+  }
+
+  // --- DIRECTION SWITCH DEBOUNCE ---
+  if (readingDir != lastDirectionState && (currentTime - lastDebounceTimeDir > debounceDelay)) {
+    lastDebounceTimeDir = currentTime;
+    if (readingDir == HIGH) {
+      motorDirection = !motorDirection;
+    }
+  }
+
+  lastOnOffState = readingOnOff;
+  lastDirectionState = readingDir;
+
+  // --- Read TMP36 temperature ---
+  int analogValue = analogRead(tmpPin);
+  float voltage = analogValue * 3.3 / 1023.0;
+  float temperatureC = (voltage - 0.5) * 100.0;
+
+  // --- Map 25–32°C to 0–255 PWM ---
+  if (temperatureC < 25) temperatureC = 25;
+  if (temperatureC > 32) temperatureC = 32;
+  motorSpeed = map(temperatureC * 10, 250, 320, 0, 255); // Multiply by 10 to preserve precision
+
+  // --- Motor direction control ---
+  if (motorDirection == 1) {
+    digitalWrite(controlPin1, HIGH);
+    digitalWrite(controlPin2, LOW);
+  } else {
+    digitalWrite(controlPin1, LOW);
+    digitalWrite(controlPin2, HIGH);
+  }
+
+  if (motorEnabled) {
+    analogWrite(enablePin, motorSpeed);
+  } else {
+    analogWrite(enablePin, 0);
+  }
+
+  // Debug output
+  Serial.print("Temp (C): ");
+  Serial.print(temperatureC);
+  Serial.print(" | Motor Enabled: ");
+  Serial.print(motorEnabled);
+  Serial.print(" | Direction: ");
+  Serial.print(motorDirection == 1 ? "Forward" : "Reverse");
+  Serial.print(" | Speed: ");
+  Serial.println(motorSpeed);
+}
+
+
+
+
+
+
+Combined codes (temp control, freq read and amplitude control for freq and temp) - Hrafnhildur
+// --- Motor Control Pins ---
+const int controlPin1 = 2;       // Motor direction control pin 1
+const int controlPin2 = 3;       // Motor direction control pin 2
+const int enablePin = 4;         // PWM output pin to control motor speed
+const int directionSwitchPin = 9;// Pin connected to a switch to change motor direction
+const int onOffSwitchPin = 5;    // Pin connected to a switch to turn motor ON/OFF
+
+// --- Sensor Pins ---
+const int tmpPin = A0;           // Analog input pin for TMP36 temperature sensor
+const int freqPin = 7;           // Digital input pin for frequency measurement
+
+// --- Frequency Monitoring Settings ---
+const float target_freq = 50.0;      // Nominal frequency (e.g., 50.0 Hz)
+const float freq_threshold = 0.1;    // Allowed deviation before taking action
+const float freqCorrection = 0.9915; // Calibration factor for frequency measurement
+
+// --- State Variables ---
+int motorEnabled = 0;                // Motor ON/OFF state (0 = OFF, 1 = ON)
+int motorDirection = 1;              // Motor direction (1 = forward, 0 = reverse)
+int lastOnOffState = LOW;            // Stores previous ON/OFF switch state
+int lastDirectionState = LOW;        // Stores previous direction switch state
+
+unsigned long lastDebounceTimeDir = 0;       // Last time direction switch changed
+unsigned long lastDebounceTimeOnOff = 0;     // Last time ON/OFF switch changed
+const unsigned long debounceDelay = 50;      // Debounce delay in milliseconds
+
+int motorSpeed = 0;                 // PWM value to control motor speed
+
+void setup() {
+  pinMode(directionSwitchPin, INPUT); // Set direction switch pin as input
+  pinMode(onOffSwitchPin, INPUT);     // Set ON/OFF switch pin as input
+  pinMode(controlPin1, OUTPUT);       // Set motor direction pin 1 as output
+  pinMode(controlPin2, OUTPUT);       // Set motor direction pin 2 as output
+  pinMode(enablePin, OUTPUT);         // Set enable pin (PWM) as output
+  pinMode(freqPin, INPUT);            // Set frequency input pin as input
+
+  digitalWrite(enablePin, LOW);       // Initially turn off motor
+
+  Serial.begin(9600);                 // Start serial communication for debugging
+}
+
+void loop() {
+  // --- Read switches with debouncing ---
+  int readingOnOff = digitalRead(onOffSwitchPin);         // Read current ON/OFF switch state
+  int readingDir = digitalRead(directionSwitchPin);       // Read current direction switch state
+  unsigned long currentTime = millis();                   // Get current time
+
+  // --- ON/OFF switch debounce logic ---
+  if (readingOnOff != lastOnOffState && (currentTime - lastDebounceTimeOnOff > debounceDelay)) {
+    lastDebounceTimeOnOff = currentTime;                  // Update last debounce time
+    if (readingOnOff == HIGH) {                           // If button is pressed
+      motorEnabled = !motorEnabled;                       // Toggle motor state
+    }
+  }
+
+  // --- Direction switch debounce logic ---
+  if (readingDir != lastDirectionState && (currentTime - lastDebounceTimeDir > debounceDelay)) {
+    lastDebounceTimeDir = currentTime;                    // Update last debounce time
+    if (readingDir == HIGH) {                             // If button is pressed
+      motorDirection = !motorDirection;                   // Toggle motor direction
+    }
+  }
+
+  // Store current switch states for next loop
+  lastOnOffState = readingOnOff;
+  lastDirectionState = readingDir;
+
+  // --- Read TMP36 Temperature Sensor ---
+  int analogValue = analogRead(tmpPin);                   // Read analog voltage from sensor
+  float voltage = analogValue * 3.3 / 1023.0;              // Convert ADC value to voltage (assumes 3.3V reference)
+  float temperatureC = (voltage - 0.5) * 100.0;            // Convert voltage to °C for TMP36
+
+  // --- Read Frequency from Oscilloscope Signal ---
+  unsigned long highTime = pulseIn(freqPin, HIGH, 500000);  // Measure high pulse duration (µs)
+  unsigned long lowTime = pulseIn(freqPin, LOW, 500000);    // Measure low pulse duration (µs)
+
+  float frequency = 0;              // Variable for raw frequency
+  float frequency_cor = 0;          // Variable for corrected frequency
+
+  if (highTime > 0 && lowTime > 0) {
+    unsigned long period = highTime + lowTime;            // Total period of the signal
+    frequency = 1000000.0 / period;                       // Convert period to frequency in Hz
+    frequency_cor = frequency * freqCorrection;           // Apply correction factor
+  }
+
+  // --- Motor Speed Logic ---
+  if (frequency_cor < (target_freq - freq_threshold)) {
+    // Grid frequency is too low → reduce power to motor
+    motorSpeed = map(frequency_cor * 10, 495, 500, 50, 0); // Scale: lower freq = lower speed
+    motorSpeed = constrain(motorSpeed, 0, 255);            // Ensure PWM is within bounds
+  } else {
+    // Grid frequency is stable → control via temperature
+    if (temperatureC < 25) temperatureC = 25;              // Clamp lower bound
+    if (temperatureC > 32) temperatureC = 32;              // Clamp upper bound
+    motorSpeed = map(temperatureC * 10, 250, 320, 0, 255); // Map 25–32°C to 0–255 PWM
+  }
+
+  // --- Set Motor Direction ---
+  if (motorDirection == 1) {
+    digitalWrite(controlPin1, HIGH);                       // Forward: pin1 HIGH
+    digitalWrite(controlPin2, LOW);                        //         pin2 LOW
+  } else {
+    digitalWrite(controlPin1, LOW);                        // Reverse: pin1 LOW
+    digitalWrite(controlPin2, HIGH);                       //         pin2 HIGH
+  }
+
+  // --- Apply Motor PWM ---
+  if (motorEnabled) {
+    analogWrite(enablePin, motorSpeed);                    // Apply PWM value to enable pin
+  } else {
+    analogWrite(enablePin, 0);                             // Motor OFF
+  }
+
+  // --- Serial Debug Output ---
+  Serial.print("Temp (C): ");
+  Serial.print(temperatureC);
+  Serial.print(" | Freq (Hz): ");
+  Serial.print(frequency_cor);
+  Serial.print(" | Motor Enabled: ");
+  Serial.print(motorEnabled);
+  Serial.print(" | Direction: ");
+  Serial.print(motorDirection == 1 ? "Forward" : "Reverse");
+  Serial.print(" | Speed (PWM): ");
+  Serial.println(motorSpeed);
+
+  delay(500); // Wait 500ms between updates
+}
